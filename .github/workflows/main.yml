@@ -1,0 +1,47 @@
+name: CI - Terraform Docker IaC
+
+on:
+  push:
+    branches: [ "main" ]
+
+jobs:
+  terraform:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Docker
+        uses: docker/setup-buildx-action@v2
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: "1.5.7" # ajustez si besoin
+
+      - name: Terraform Init
+        working-directory: .
+        run: terraform init
+
+      - name: Terraform Validate
+        working-directory: .
+        run: terraform validate || true
+
+      - name: Terraform Plan
+        id: plan
+        working-directory: .
+        run: |
+          terraform plan -out=tfplan
+          terraform show -no-color tfplan > plan.txt
+      - name: Upload plan artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: terraform-plan
+          path: plan.txt
+
+      - name: Terraform Apply
+        if: success()
+        working-directory: .
+        run: terraform apply -auto-approve tfplan

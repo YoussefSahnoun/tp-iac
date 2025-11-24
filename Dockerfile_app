@@ -1,0 +1,38 @@
+FROM alpine:latest
+
+# Install nginx
+RUN apk update && \
+    apk add --no-cache nginx && \
+    rm -rf /var/cache/apk/*
+
+# Remove default configs to avoid 404
+RUN rm -f /etc/nginx/http.d/*
+
+# Create required directories
+RUN mkdir -p /usr/share/nginx/html \
+             /var/log/nginx \
+             /run/nginx \
+             /etc/nginx/conf.d
+
+# Add index.html
+RUN echo "<!doctype html><html><head><meta charset='utf-8'><title>TP IaC</title></head><body><h1>Application Deployed via Terraform IaC!</h1></body></html>" \
+    > /usr/share/nginx/html/index.html
+
+# Add minimal Nginx config
+RUN echo 'server { \
+    listen 80; \
+    server_name localhost; \
+    location / { \
+        root /usr/share/nginx/html; \
+        index index.html; \
+    } \
+}' > /etc/nginx/http.d/default.conf
+
+# Ensure nginx user can read files and write logs/run
+RUN chown -R nginx:nginx /usr/share/nginx/html /var/log/nginx /run/nginx
+
+# Expose port 80
+EXPOSE 80
+
+# Start nginx in foreground
+CMD ["nginx", "-g", "daemon off;"]
