@@ -28,7 +28,7 @@ pipeline {
             steps {
                 sh '''
                     set -o allexport
-                    source .tfenvvars
+                    . .tfenvvars
                     set +o allexport
 
                     terraform --version
@@ -37,11 +37,12 @@ pipeline {
             }
         }
 
+
         stage('Terraform Plan') {
             steps {
                 sh '''
                     set -o allexport
-                    source .tfenvvars
+                    . .tfenvvars
                     set +o allexport
 
                     terraform plan -out=tfplan -input=false
@@ -56,20 +57,20 @@ pipeline {
             }
         }
 
+
         stage('Terraform Apply') {
-            when {
-                branch 'main'
-            }
+            when { branch 'main' }
             steps {
                 sh '''
                     set -o allexport
-                    source .tfenvvars
+                    . .tfenvvars
                     set +o allexport
 
                     terraform apply -auto-approve tfplan
                 '''
             }
         }
+
     }
 
     post {
