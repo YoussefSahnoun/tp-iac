@@ -18,7 +18,7 @@ jobs:
         uses: actions/checkout@v4
  
       - name: Setup Terraform
-        uses: hashicorp/setup-terraform@v3
+        uses: hashicorp/setup-terraform@v4
         with:
           terraform_version: 1.9.0
 
@@ -31,13 +31,13 @@ jobs:
           terraform show -no-color tfplan > plan.txt
 
       - name: Upload plan.txt
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: terraform-plan
           path: plan.txt
 
       - name: Upload tfplan
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: tfplan
           path: tfplan
