@@ -1,0 +1,113 @@
+// Jenkinsfile (Declarative pipeline)
+pipeline {
+  agent {
+    // Runs Terraform inside the official terraform image and bind-mounts Docker socket.
+    docker {
+      image 'hashicorp/terraform:1.5.7'
+      args  '-v /var/run/docker.sock:/var/run/docker.sock -u root'
+    }
+  }
+
+  environment {
+    // Prevent terraform interactive prompts and help some providers behave in CI
+    TF_IN_AUTOMATION = 'true'
+    // Example: you can set other TF_VAR_* here or inject them from Jenkins credentials below
+  }
+
+  options {
+    // Keep build log for 14 days (tweak as necessary)
+    buildDiscarder(logRotator(numToKeepStr: '50'))
+    // Fail the pipeline if any stage takes more than X minutes (optional)
+    timeout(time: 60, unit: 'MINUTES')
+  }
+
+  triggers {
+    // Prefer webhooks on SCM for push events. As fallback you can enable polling:
+    // pollSCM('H/5 * * * *')
+  }
+
+  stages {
+    stage('Checkout') {
+      steps {
+        checkout scm
+      }
+    }
+
+    stage('Inject secrets') {
+      steps {
+        // Inject DB password from Jenkins credentials into TF_VAR_db_password
+        // Create a Secret Text credential in Jenkins with id 'DB_PASSWORD'
+        withCredentials([string(credentialsId: 'DB_PASSWORD', variable: 'DB_PASSWORD')]) {
+          // Export into environment variable that Terraform will read as TF_VAR_db_password
+          sh 'export TF_VAR_db_password="${DB_PASSWORD}"'
+          // Also write to a file for subsequent stages (the docker container persists workspace)
+          sh 'echo "TF_VAR_db_password=${DB_PASSWORD}" > .tfenvvars'
+        }
+      }
+    }
+
+    stage('Terraform Init') {
+      steps {
+        // Load env var file so subsequent terraform commands in same workspace see TF_VAR_db_password
+        sh '''
+          if [ -f .tfenvvars ]; then
+            set -o allexport
+            source .tfenvvars
+            set +o allexport
+          fi
+        '''
+        sh 'terraform --version'
+        sh 'terraform init -input=false'
+      }
+    }
+
+    stage('Terraform Plan') {
+      steps {
+        sh '''
+          if [ -f .tfenvvars ]; then
+            set -o allexport
+            source .tfenvvars
+            set +o allexport
+          fi
+          terraform plan -out=tfplan -input=false
+          terraform show -no-color tfplan > plan.txt
+        '''
+      }
+      post {
+        success {
+          archiveArtifacts artifacts: 'plan.txt', fingerprint: true
+          // Save the binary plan as an artifact for transparency / possible later apply
+          archiveArtifacts artifacts: 'tfplan', allowEmptyArchive: true
+        }
+      }
+    }
+
+    stage('Terraform Apply') {
+      when {
+        branch 'main'           // Ensure apply runs only on main branch (adjust as required)
+      }
+      steps {
+        // Apply the exact plan we created
+        sh '''
+          if [ -f .tfenvvars ]; then
+            set -o allexport
+            source .tfenvvars
+            set +o allexport
+          fi
+          # Apply the previously generated plan file
+          terraform apply -input=false -auto-approve tfplan
+        '''
+      }
+    }
+  }
+
+  post {
+    always {
+      // Print a short summary (do not print sensitive values)
+      sh 'echo "Pipeline finished. To inspect containers on the agent run: docker ps -a" || true'
+    }
+    failure {
+      mail to: 'team@example.com', subject: "Terraform pipeline failed: ${env.JOB_NAME} #${env.BUILD_NUMBER}", body: "See Jenkins console output."
+    }
+  }
+}
